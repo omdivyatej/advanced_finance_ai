@@ -38,21 +38,24 @@ chunked_doc_splits = text_splitter.split_documents(raw_documents)
 
 #Store the splits - use the embeddings 
 # Check if embeddings for the given file/web are already stored
-store_name = raw_document_name  # Replace with an identifier for your file/web
+store_name = "om"  # Replace with an identifier for your file/web
+
 path_to_embeddings = "embeddings_db"  # Replace with the actual path
+try:
+    loaded_embeddings = load_embeddings(store_name, path_to_embeddings)
+    print(loaded_embeddings)
 
-loaded_embeddings = load_embeddings(store_name, path_to_embeddings)
-
-if loaded_embeddings is None:
-    # If embeddings are not already stored, then store them
-    db = FAISS.from_documents(chunked_doc_splits, embedding=OpenAIEmbeddings())
-    store_embeddings(chunked_doc_splits, db, store_name, path_to_embeddings)
-    print('storing the emb')
-else:
-    # If embeddings are already stored, use them
-    db = loaded_embeddings
-    print('retrieving the emb')
-
+    if loaded_embeddings is None:
+        # If embeddings are not already stored, then store them
+        #db = FAISS.from_documents(chunked_doc_splits, embedding=OpenAIEmbeddings())
+        store_embeddings(docs=chunked_doc_splits, embeddings=OpenAIEmbeddings(), store_name=store_name, path=path_to_embeddings)
+        print('storing the emb')
+    else:
+        # If embeddings are already stored, use them
+        db = loaded_embeddings
+        print('retrieving the emb')
+except Exception as e:
+    print("Error:", e)
 
 #db = FAISS.from_documents(chunked_doc_splits, embedding=OpenAIEmbeddings())
 
