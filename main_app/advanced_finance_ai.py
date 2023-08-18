@@ -2,18 +2,17 @@
 import os
 from dotenv import load_dotenv
 from embeddings import load_embeddings,store_embeddings
-from urllib.parse import urlparse,parse_qs
+from urllib.parse import urlparse
 
 #AI Imports
 import openai
+from langchain.chat_models import ChatOpenAI
 from langchain.document_loaders import WebBaseLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.chains.question_answering import load_qa_chain
-from langchain import OpenAI
-from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
-
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
 '''
 FO- Fairly optimised
 CO - Can be optimised more
@@ -26,10 +25,11 @@ load_dotenv()
 openai.api_key= os.getenv("OPENAI_API_KEY")
 
 #Load the document - FO 
-url= "https://lilianweng.github.io/posts/2023-06-23-agent/"
+
+url="https://frontiernerds.com/files/state_of_the_union.txt"
 parsed_url = urlparse(url)
 loader = WebBaseLoader(url,continue_on_failure=True, verify_ssl=True)
-raw_document_name = str(parsed_url.netloc)+"_"+str(parsed_url.path).replace("/","_")
+raw_document_name = str(parsed_url.netloc)+"_"+str(parsed_url.path).replace("/","_") 
 raw_documents= loader.load()
 
 #Split the document - Recursive is recommended due to iterative approach
@@ -38,7 +38,7 @@ chunked_doc_splits = text_splitter.split_documents(raw_documents)
 
 #Store the splits - use the embeddings 
 # Check if embeddings for the given file/web are already stored
-store_name = "om"  # Replace with an identifier for your file/web
+store_name = raw_document_name  # Replace with an identifier for your file/web
 
 path_to_embeddings = "embeddings_db"  # Replace with the actual path
 try:
@@ -46,10 +46,10 @@ try:
     print(loaded_embeddings)
 
     if loaded_embeddings is None:
-        # If embeddings are not already stored, then store them
-        #db = FAISS.from_documents(chunked_doc_splits, embedding=OpenAIEmbeddings())
-        store_embeddings(docs=chunked_doc_splits, embeddings=OpenAIEmbeddings(), store_name=store_name, path=path_to_embeddings)
+        # If embeddings are not already stored, then store them       
+        stored_emb = store_embeddings(docs=chunked_doc_splits, embeddings=OpenAIEmbeddings(), store_name=store_name, path=path_to_embeddings)
         print('storing the emb')
+        db=stored_emb
     else:
         # If embeddings are already stored, use them
         db = loaded_embeddings
@@ -57,24 +57,47 @@ try:
 except Exception as e:
     print("Error:", e)
 
-#db = FAISS.from_documents(chunked_doc_splits, embedding=OpenAIEmbeddings())
 
-# #Build a chain
-# llm=OpenAI(temperature=0)
-# chain = load_qa_chain(llm, chain_type="stuff")
+#Build a chain
+llm=ChatOpenAI(temperature=0,verbose=True,model_name="gpt-3.5-turbo")
 
+#set the retriever
+retriever = db.as_retriever()
 
-# #Ask the question
-# while True:
-#     query = input("Ask a question, or type 'exit' to quit:  ")
-#     if query.lower()=='exit':
-#         break
+sales_template = """
+     As an excellent history and general knowledge bot, your goal is to provide accurate and helpful information
+     about the context provided to you. You should answer user inquiries based on the context provided.
+     If he greets, then greet him. Don't include prefix 'Answer'. If you don't understand a question, ask to 
+     repeat the question. If you see a question related to anything irrelevant to the context, say it is irrelevant.
+     Use the following context (delimited by <ctx></ctx>) and the chat history (delimited by <hs></hs>) to answer the question:
+    <ctx>
+     {context} 
+    </ctx>
+    <hs> {history} </hs>
+    Question: {question}"""
+SALES_PROMPT = PromptTemplate(
+        template=sales_template, input_variables=["history", "context", "question"]
+    )
+chat = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever= db.as_retriever(),
+    chain_type_kwargs={
+            "verbose": False,
+            "prompt": SALES_PROMPT,
+            "memory": ConversationBufferMemory(
+                memory_key="history",
+                input_key="question"),
+        },
+        verbose = True
 
-#     #question = "What are the approaches to Task Decomposition?"
-#     answer_docs = db.similarity_search(query)
-#     op = chain.run(input_documents=answer_docs,question=query)
-#     print(op)
-#     # where the part of the answer is found
-#     print(answer_docs[0].page_content)
+)
 
+#Ask the question
+while True:
+    query = input("Ask a question, or type 'exit' to quit:  ")
+    if query.lower()=='exit':
+        break
 
+    result=chat.run(query)
+    print(result)

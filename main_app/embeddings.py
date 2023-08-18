@@ -10,8 +10,12 @@ def store_embeddings(docs, embeddings, store_name, path):
         with open(file_path, "wb") as f:
             pickle.dump(vectorStore, f)
         print("Embeddings stored successfully.")
+        load_emb= load_embeddings(store_name,path)
+        print("Loading the emb...")
+        return load_emb
     else:
         print("Embeddings file already exists. Not overwriting. Emb error")
+        return None
 
 def load_embeddings(store_name, path):
     file_path = f"{path}/faiss_{store_name}.pkl"
